@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using Amazon.DynamoDBv2;
+using LocalStack.Client.Extensions;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -11,7 +13,7 @@ public static class Configuration
 {
     const string serviceName = "BinaryMash.OtelPlayground.DiceRoller";
 
-    const string serviceVersion = "2.9.3.1";
+    const string serviceVersion = "2.12.3.1";
 
     static Uri otelCollectorUri = new Uri("http://localhost:4317");
 
@@ -29,27 +31,42 @@ public static class Configuration
         appBuilder.Logging
             .AddOpenTelemetry(options => options
                 .SetResourceBuilder(resourceBuilder)
+                //.AddConsoleExporter()
                 .AddOtlpExporter(oltpOptions => oltpOptions.Endpoint = otelCollectorUri)
         );
 
+        // domain
         appBuilder.Services
-            
+            .AddScoped<DiceService>()
+            .AddScoped<Subsystem>();
+
+        // infrastructure
+        appBuilder.Services
+            .AddHttpClient()
+            .AddLocalStack(appBuilder.Configuration)
+            .AddDefaultAWSOptions(appBuilder.Configuration.GetAWSOptions())
+            .AddAwsService<IAmazonDynamoDB>()
+            .AddSingleton<DynamoRepo>();
+
+        // telemetry
+        appBuilder.Services            
             .AddSingleton(activitySource)
             .AddSingleton<DomainMetrics>()
-
-            .AddScoped<DiceService>()
-            .AddScoped<Subsystem>()
-            
             .AddOpenTelemetry()
                 .ConfigureResource(resource => resource.AddService(serviceName, serviceVersion: serviceVersion))
                 .WithTracing(tracing => tracing
                     .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddAWSInstrumentation()                    
 //                    .AddSource(nameof(activitySource)) // seems not to be needed, as trace is being written out without it
+                    //.AddConsoleExporter()
                     .AddOtlpExporter(oltpOptions => oltpOptions.Endpoint = otelCollectorUri)
                 )
                 .WithMetrics(metrics => metrics
                     .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
                     .AddMeter(DomainMetrics.Name)
+                    //.AddConsoleExporter()
                     .AddOtlpExporter(oltpOptions => oltpOptions.Endpoint = otelCollectorUri)
                 );
 

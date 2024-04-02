@@ -5,10 +5,12 @@ namespace otel;
 public class Subsystem
 {
     private readonly ActivitySource activitySource;
+    private readonly IHttpClientFactory httpClientFactory;
 
-    public Subsystem(ActivitySource activitySource)
+    public Subsystem(ActivitySource activitySource, IHttpClientFactory httpClientFactory)
     {
         this.activitySource = activitySource;
+        this.httpClientFactory = httpClientFactory;
     }
 
     public async Task DoSomething(CancellationToken cancellationToken)
@@ -17,7 +19,11 @@ public class Subsystem
         {
             try
             {
-                await Task.Delay(1000, cancellationToken);
+                using(var httpClient = httpClientFactory.CreateClient())
+                {
+                    HttpRequestMessage request = new(HttpMethod.Get, "https://www.google.com");
+                    var response = await httpClient.SendAsync(request, cancellationToken);
+                }
                 activity?.AddEvent(new ActivityEvent("Did something"));
                 activity?.SetStatus(ActivityStatusCode.Ok);
             }
@@ -36,5 +42,6 @@ public class Subsystem
             await Task.Delay(200, cancellationToken);
             activity?.AddEvent(new ActivityEvent("Finished doing something else"));
         }
+        
     }
 }
